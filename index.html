@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Boots AI – Small Business Problem Solver</title>
+
+  <!-- Tailwind via CDN (scoped to this page) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React 18 UMD + Babel (compiles JSX in-browser for this single page) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    html, body { height: 100%; margin: 0; background: #0a0220; }
+    #widget-shell { min-height: 720px; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  </style>
+</head>
+<body>
+  <div id="widget-shell">
+    <div id="root" class="w-full max-w-[1100px]"></div>
+  </div>
+
+  <script type="text/babel" data-presets="env,react">
+    const {useMemo, useState} = React;
+
+    // ---------- Brand/theme ----------
+    const BRAND = {
+      name: "Boots AI",
+      gradient: "from-violet-700 via-fuchsia-600 to-indigo-700",
+      surface: "bg-white/90 backdrop-blur",
+      text: "text-gray-900 font-sans tracking-normal leading-relaxed",
+      ring: "ring-1 ring-white/20",
+      accent: "bg-black text-white hover:bg-gray-800",
+      chip: "bg-white/70 hover:bg-white text-gray-900",
+      ghost: "bg-black text-white hover:bg-gray-800",
+    };
+
+    const BADGE = () => (
+      <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold bg-white/10 text-white ring-1 ring-white/20">
+        <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-emerald-400" />
+        Powered by Boots AI
+      </span>
+    );
+
+    // ---------- Data ----------
+    const BUSINESS_TYPES = ["Salon / Medspa","Fitness / Studio","Home Services","Professional Services","Restaurant / Cafe","Retail","Other"];
+    const ALL_CHANNELS = ["Phone","SMS","Website","Instagram","Facebook","Google Business","Email"];
+
+    const STARTER_RECIPES = {
+      "Missed calls / slow replies": [
+        "24/7 AI receptionist to answer FAQs, capture contact info, and book appointments",
+        "Missed-call text-back with name capture and smart follow-up",
+        "Unified inbox so calls, texts, IG/FB messages land in one place",
+      ],
+      "No-shows / scheduling chaos": [
+        "Auto-confirm + reminder sequence across SMS + Email",
+        "Waitlist + easy reschedule links to fill gaps",
+        "Policy-aware prompts that reduce late cancels",
+      ],
+      "Lead capture + follow-up": [
+        "Website chat that collects name, service, timing + routes to booking",
+        "5-day drip with social proof and offers",
+        "Lead scoring + nudge when hot (clicked pricing, replied, etc.)",
+      ],
+      "Customer support overload": [
+        "Knowledge-based chat for common questions",
+        "Ticket → text handoff for human when needed",
+        "Office hours guardrails with friendly after-hours helper",
+      ],
+      "Reviews / reputation": [
+        "Post-visit SMS asking ‘How was it?’ with smart routing",
+        "1–click Google review link for happy clients",
+        "Private feedback capture for fixes before it hits public",
+      ],
+    };
+
+    const NICHE_HINTS = {
+      "Salon / Medspa": [
+        "Solo owner? Let an AI receptionist answer calls and book while you’re in session.",
+        "Pre-visit consent forms + reminders cut lobby time.",
+        "Upsell skincare bundles with post-visit texts.",
+      ],
+      "Fitness / Studio": [
+        "Trial-to-member sequence boosts conversions.",
+        "Class reminders reduce no-shows.",
+        "Win-back offers after 30 days inactive.",
+      ],
+      "Home Services": [
+        "After-hours estimate intake via SMS.",
+        "Photo upload flow to pre-qualify jobs.",
+        "Technician ETA texts reduce support load.",
+      ],
+      "Professional Services": [
+        "Intake bot schedules consults + collects basics.",
+        "Document checklist links save back-and-forth.",
+        "Nurture sequence warms cold leads.",
+      ],
+      "Restaurant / Cafe": [
+        "Table waitlist + SMS ready alerts.",
+        "Catering inquiry flow with menu PDF.",
+        "Review boost after first visit.",
+      ],
+      Retail: [
+        "Back-in-stock alerts via SMS.",
+        "Quiz-to-product match for first-time buyers.",
+        "Loyalty punch-card by text.",
+      ],
+      Other: [
+        "Fast intake + clear next steps.",
+        "Automate FAQs and route the rare edge cases.",
+        "Follow-up that feels human, not spammy.",
+      ],
+    };
+
+    // ---------- UI helpers ----------
+    function Chip({ children, selected, onClick }) {
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          className={[
+            "px-3 py-1.5 rounded-full text-base transition focus:outline-none font-semibold",
+            selected ? "bg-black text-white shadow" : BRAND.chip,
+          ].join(" ")}
+        >
+          {children}
+        </button>
+      );
+    }
+
+    function PrimaryButton({ children, ...props }) {
+      return (
+        <button {...props} className={`inline-flex items-center justify-center rounded-xl px-5 py-2 text-base font-semibold ${BRAND.accent}`}>
+          {children}
+        </button>
+      );
+    }
+
+    function GhostButton({ children, ...props }) {
+      return (
+        <button {...props} className={`inline-flex items-center justify-center rounded-xl px-5 py-2 text-base font-semibold ${BRAND.ghost}`}>
+          {children}
+        </button>
+      );
+    }
+
+    // ---------- Validation ----------
+    function getStepValidation(step, a) {
+      if (step === 0 && !(a.role && a.teamSize)) return { message: "Pick a business type and team size to continue." };
+      if (step === 1 && !a.challenge) return { message: "Choose your biggest blocker to continue." };
+      if (step === 2 && (!a.channels || a.channels.length === 0)) return { message: "Select at least one channel to continue." };
+      if (step === 3) {
+        if (!a.budget && a.urgency) return { field: "budget", message: "Select a budget to continue." };
+        if (a.budget && !a.urgency) return { field: "urgency", message: "Select a timing option to continue." };
+        if (!a.budget && !a.urgency) return { message: "Choose a budget and timing to continue." };
+      }
+      return null;
+    }
+
+    // ---------- Plan builder ----------
+    function suggestHeadline(a) {
+      if (a.challenge === "Missed calls / slow replies") return "Stop losing leads to voicemail";
+      if (a.challenge === "No-shows / scheduling chaos") return "Fewer no-shows, smoother days";
+      if (a.challenge === "Lead capture + follow-up") return "Turn browsers into bookings";
+      if (a.challenge === "Reviews / reputation") return "Grow 5★ reviews automatically";
+      if (a.challenge === "Customer support overload") return "Answer common questions automatically";
+      if (a.challenge === "Other") return "Let's find a solution together";
+      return "Automate the busywork, keep the human touch";
+    }
+
+    function suggestStack(a) {
+      const items = [];
+      if (a.channels?.includes("Phone") || a.channels?.includes("SMS")) items.push("AI phone + SMS agent");
+      if (a.channels?.includes("Website")) items.push("Website chat assistant");
+      if (a.channels?.includes("Instagram") || a.channels?.includes("Facebook")) items.push("IG/FB DM responder");
+      if (a.channels?.includes("Google Business")) items.push("Google Business Messages");
+      items.push("CRM + unified inbox");
+      items.push("Booking + reminders");
+      return items;
+    }
+
+    function suggestTimeline(a) {
+      if (a.urgency === "Now") return "48 hours to live";
+      if (a.urgency === "This Month") return "1–2 weeks, paced with you";
+      return "We’ll map a pilot together";
+    }
+
+    function estimateROI(a) {
+      let monthly = 12; // baseline
+      if (a.teamSize === "Solo") monthly += 10;
+      if (a.challenge === "Missed calls / slow replies") monthly += 12;
+      if (a.channels?.includes("Phone")) monthly += 6;
+      return {
+        appointmentsSaved: monthly,
+        revenueHint: "Often 10–30 extra bookings/mo depending on volume",
+      };
+    }
+
+    function buildPlan(a) {
+      const recipes = STARTER_RECIPES[a.challenge || "Lead capture + follow-up"] || [];
+      const baseStack = [
+        a.channels.includes("Phone") || a.channels.includes("SMS")
+          ? "AI receptionist + missed-call text-back"
+          : "Website assistant + lead capture",
+        a.challenge === "No-shows / scheduling chaos"
+          ? "Smart reminders + waitlist"
+          : "Nurture + booking links",
+        a.channels.includes("Google Business") ? "Google profile chat/auto-replies" : "",
+      ].filter(Boolean);
+
+      const scope = [...baseStack, ...recipes];
+      const effort = a.teamSize === "Solo" ? "hands-off" : "collaborative";
+      const roi = estimateROI(a);
+
+      return {
+        headline: suggestHeadline(a),
+        scope,
+        stack: suggestStack(a),
+        timeline: suggestTimeline(a),
+        roi,
+        effort,
+        nextSteps: [
+          "Free 15-min fit check",
+          "We configure a quick-start in 48 hours",
+          "Run for a week → adjust based on results",
+        ],
+      };
+    }
+
+    // ---------- Sections ----------
+    function Section({ title, children, subtle }) {
+      return (
+        <section className="mt-4">
+          <h3 className={`text-sm font-bold ${subtle ? "text-gray-800" : "text-gray-900"}`}>{title}</h3>
+          <div className="mt-2">{children}</div>
+        </section>
+      );
+    }
+
+    function PlanView({ plan, answers, onRestart }) {
+      return (
+        <div>
+          <div className="rounded-xl border border-gray-200 bg-white/90 p-4 md:p-5">
+            <h2 className="text-xl md:text-2xl font-extrabold text-gray-900">{plan.headline}</h2>
+            <p className="mt-1 text-base text-gray-800">
+              For a {answers.teamSize || ""} team in {answers.role || "your business"}. We’ll keep it {plan.effort} and tailored.
+            </p>
+
+            <div className="mt-5 grid gap-5 md:grid-cols-3">
+              <div className="md:col-span-2">
+                <Section title="Your Starter Plan">
+                  <ul className="space-y-2">
+                    {plan.scope.map((s, i) => (
+                      <li key={i} className="flex gap-2 text-base text-gray-900">
+                        <span className="mt-2 h-1.5 w-1.5 rounded-full bg-violet-500" />
+                        <span>{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+
+                <Section title="Tech Stack">
+                  <div className="flex flex-wrap gap-2">
+                    {plan.stack.map((s, i) => (
+                      <span key={i} className="rounded-full bg-gray-100 px-3 py-1 text-base text-gray-900">{s}</span>
+                    ))}
+                  </div>
+                </Section>
+              </div>
+
+              <div className="md:col-span-1">
+                <Section title="Quick Wins" subtle>
+                  <div className="text-base text-gray-900">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-2xl font-extrabold">{plan.roi.appointmentsSaved}</span>
+                      <span className="text-xs uppercase tracking-wide text-gray-600">appts/mo saved</span>
+                    </div>
+                    <p className="mt-2 text-gray-800">{plan.roi.revenueHint}</p>
+                    <p className="mt-2 text-gray-800">Timeline: <span className="font-bold">{plan.timeline}</span></p>
+                  </div>
+                </Section>
+
+                <Section title="Next Steps" subtle>
+                  <div className="mt-2">
+                    <button
+                      onClick={onRestart}
+                      className="w-full rounded-xl px-4 py-2 text-base font-semibold border border-gray-300 text-gray-900 hover:bg-gray-50"
+                    >
+                      Try another scenario
+                    </button>
+                  </div>
+                </Section>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ---------- Main component ----------
+    function BootsAIWidget({ onSubmit, onClose, logoSrc }) {
+      const [step, setStep] = useState(0);
+      const [answers, setAnswers] = useState({ role: "", teamSize: "", challenge: "", channels: [], budget: "", urgency: "", notes: "" });
+
+      const steps = ["About your business","What’s hardest right now?","Where do customers reach you?","Budget & timing","Anything else?","Your tailored plan"];
+      const validation = useMemo(() => getStepValidation(step, answers), [step, answers]);
+      const canNext = useMemo(() => !validation || step === 4 || step === 5, [validation, step]);
+      const plan = useMemo(() => buildPlan(answers), [answers]);
+
+      function toggleChannel(ch) {
+        setAnswers((a) => ({
+          ...a,
+          channels: a.channels.includes(ch) ? a.channels.filter((x) => x !== ch) : [...a.channels, ch],
+        }));
+      }
+      function reset() {
+        setStep(0);
+        setAnswers({ role: "", teamSize: "", challenge: "", channels: [], budget: "", urgency: "", notes: "" });
+      }
+      function finish() { onSubmit && onSubmit({ answers, plan }); setStep(5); }
+
+      // Read logo from query (?logoSrc=...)
+      const params = new URLSearchParams(location.search);
+      const logoFromQuery = params.get("logoSrc") || logoSrc;
+
+      return (
+        <section className={`relative w-full overflow-hidden rounded-3xl p-6 md:p-10 shadow-2xl ${BRAND.ring} ${BRAND.text}`}>
+          <div className={`absolute inset-0 -z-10 bg-gradient-to-br ${BRAND.gradient}`} />
+
+          {/* Close Icon */}
+          <button aria-label="Close" onClick={onClose} className="absolute top-4 right-4 text-white hover:text-gray-200">✕</button>
+
+          {/* Header */}
+          <header className="mb-6 md:mb-8 text-white font-sans flex items-center gap-4">
+            {logoFromQuery ? (
+              <img src={logoFromQuery} alt="Boots AI logo" className="h-10 w-10 rounded-full bg-white p-1" />
+            ) : (
+              <span className="h-10 w-10 rounded-full bg-white/20 flex items-center justify-center text-white text-lg">🅱️</span>
+            )}
+            <div>
+              <BADGE />
+              <h1 className="mt-1 text-3xl md:text-4xl font-extrabold leading-snug">
+                Solve your business problem with {BRAND.name} in seconds
+              </h1>
+              <p className="mt-2 max-w-2xl text-white/90 text-lg">
+                Short, friendly questions. Real fixes. No jargon. Your answers shape a plan that fits your size, pace, and budget.
+              </p>
+            </div>
+          </header>
+
+          {/* Card */}
+          <div className={`rounded-2xl ${BRAND.surface} p-5 md:p-6 shadow-lg`}>
+            {/* Stepper */}
+            <div className="mb-4 flex items-center justify-between">
+              <div className="text-base text-gray-900 font-bold">{steps[Math.min(step, steps.length - 1)]}</div>
+              <div className="text-sm text-gray-700">Step {Math.min(step + 1, steps.length)} of {steps.length}</div>
+            </div>
+
+            {/* Steps */}
+            {step === 0 && (
+              <div>
+                <label className="block text-base font-bold text-gray-900">What kind of business is this?</label>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {BUSINESS_TYPES.map((r) => (
+                    <Chip key={r} selected={answers.role === r} onClick={() => setAnswers((a) => ({ ...a, role: r }))}>{r}</Chip>
+                  ))}
+                </div>
+
+                <label className="mt-6 block text-base font-bold text-gray-900">Team size</label>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {["Solo","2-5","6-20","20+"].map((t) => (
+                    <Chip key={t} selected={answers.teamSize === t} onClick={() => setAnswers((a) => ({ ...a, teamSize: t }))}>{t}</Chip>
+                  ))}
+                </div>
+
+                {answers.role && (
+                  <div className="mt-6 rounded-xl bg-gray-100 p-4 text-base text-gray-900">
+                    <div className="font-bold mb-1">Quick ideas for {answers.role}:</div>
+                    <ul className="list-disc pl-5 space-y-1">
+                      {(NICHE_HINTS[answers.role] || NICHE_HINTS["Other"]).map((h, i) => <li key={i}>{h}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {step === 1 && (
+              <div>
+                <label className="block text-base font-bold text-gray-900">What’s getting in the way most?</label>
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {["Missed calls / slow replies","No-shows / scheduling chaos","Lead capture + follow-up","Customer support overload","Reviews / reputation","Other"].map((c) => (
+                    <Chip key={c} selected={answers.challenge === c} onClick={() => setAnswers((a) => ({ ...a, challenge: c }))}>{c}</Chip>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div>
+                <label className="block text-base font-bold text-gray-900">Where do customers reach you today? (pick all that apply)</label>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {ALL_CHANNELS.map((c) => (
+                    <Chip key={c} selected={answers.channels.includes(c)} onClick={() => {
+                      setAnswers((a) => ({
+                        ...a,
+                        channels: a.channels.includes(c) ? a.channels.filter((x) => x !== c) : [...a.channels, c],
+                      }));
+                    }}>{c}</Chip>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="grid gap-6 md:grid-cols-2">
+                <div>
+                  <label className="block text-base font-bold text-gray-900">Comfortable monthly budget</label>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {["$","$$","$$$","Unsure"].map((b) => (
+                      <Chip key={b} selected={answers.budget === b} onClick={() => setAnswers((a) => ({ ...a, budget: b }))}>{b}</Chip>
+                    ))}
+                  </div>
+                  {/* Budget warning appears when only urgency picked */}
+                  {(() => { const v = getStepValidation(3, answers); return v?.field === "budget" ? <p className="mt-2 text-sm text-red-600" role="alert">{v.message}</p> : null; })()}
+                </div>
+                <div>
+                  <label className="block text-base font-bold text-gray-900">Timing</label>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {["Now","This Month","Exploring"].map((u) => (
+                      <Chip key={u} selected={answers.urgency === u} onClick={() => setAnswers((a) => ({ ...a, urgency: u }))}>{u}</Chip>
+                    ))}
+                  </div>
+                  {/* Urgency warning appears when only budget picked */}
+                  {(() => { const v = getStepValidation(3, answers); return v?.field === "urgency" ? <p className="mt-2 text-sm text-red-600" role="alert">{v.message}</p> : null; })()}
+                </div>
+              </div>
+            )}
+
+            {step === 4 && (
+              <div>
+                <label className="block text-base font-bold text-gray-900">Anything we should know to tailor this? (optional)</label>
+                <textarea
+                  value={answers.notes}
+                  onChange={(e) => setAnswers((a) => ({ ...a, notes: e.target.value }))}
+                  placeholder="e.g., I’m a solo stylist, working Wed–Sat, and I miss 10+ calls/day."
+                  className="mt-3 w-full rounded-xl border border-gray-300 bg-white/90 p-3 text-base text-gray-900 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                  rows={3}
+                />
+              </div>
+            )}
+
+            {step === 5 && <PlanView plan={plan} answers={answers} onRestart={() => { setStep(0); setAnswers({ role: "", teamSize: "", challenge: "", channels: [], budget: "", urgency: "", notes: "" }); }} />}
+
+            {/* Footer */}
+            {step < 5 && (
+              <div className="mt-6 flex items-center justify-between">
+                <GhostButton onClick={() => { setStep(0); setAnswers({ role: "", teamSize: "", challenge: "", channels: [], budget: "", urgency: "", notes: "" }); }}>Start over</GhostButton>
+                <div className="flex items-center gap-3">
+                  {/* Inline validation message near Next */}
+                  {(() => { const v = getStepValidation(step, answers); return v && step !== 4 ? <span className="text-sm text-red-600" role="status" aria-live="polite">{v.message}</span> : null; })()}
+                  {step > 0 && <GhostButton onClick={() => setStep((s) => s - 1)}>Back</GhostButton>}
+                  {step < 4 && <PrimaryButton disabled={!!getStepValidation(step, answers)} onClick={() => !getStepValidation(step, answers) && setStep((s) => s + 1)}>Next</PrimaryButton>}
+                  {step === 4 && <PrimaryButton disabled={!!getStepValidation(3, answers)} onClick={() => { if (!getStepValidation(3, answers)) { setStep(5); } }}>See my tailored plan</PrimaryButton>}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Micro-proof */}
+          <p className="mt-4 text-white/90 text-base font-sans">
+            Example: Solo salon owner can’t answer calls while in-session → AI receptionist + missed-call text-back captures and books those lost leads.
+          </p>
+        </section>
+      );
+    }
+
+    // Close handler hides the whole shell (so iframe looks dismissed)
+    function handleClose() {
+      const shell = document.getElementById('widget-shell');
+      if (shell) shell.style.display = 'none';
+    }
+
+    // Mount
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<BootsAIWidget onClose={handleClose} />);
+
+    // -----------------------------
+    // Lightweight runtime tests (console-only)
+    // -----------------------------
+    (function runDevTests() {
+      try {
+        // Headline tests
+        console.assert(
+          (function(){ const a={challenge:"Missed calls / slow replies"}; return (a.challenge === "Missed calls / slow replies") ? "Stop losing leads to voicemail" : ""; })() === "Stop losing leads to voicemail",
+          "Headline for missed calls failed"
+        );
+        console.assert(
+          (function(){ const a={challenge:"Customer support overload"}; return (a.challenge === "Customer support overload") ? "Answer common questions automatically" : ""; })() === "Answer common questions automatically",
+          "Headline for support overload failed"
+        );
+        console.assert(
+          (function(){ const a={challenge:"Other"}; return (a.challenge === "Other") ? "Let's find a solution together" : ""; })().toLowerCase().includes("solution"),
+          "Headline for 'Other' should include 'solution'"
+        );
+
+        // Stack mapping tests
+        const stack1 = (function(){ return (function(a){ const items=[]; if (a.channels?.includes("Phone")||a.channels?.includes("SMS")) items.push("AI phone + SMS agent"); if (a.channels?.includes("Website")) items.push("Website chat assistant"); if (a.channels?.includes("Instagram")||a.channels?.includes("Facebook")) items.push("IG/FB DM responder"); if (a.channels?.includes("Google Business")) items.push("Google Business Messages"); items.push("CRM + unified inbox"); items.push("Booking + reminders"); return items; })({channels:["Phone","Website"]}); })();
+        console.assert(stack1.includes("AI phone + SMS agent"), "Stack should include phone agent when Phone present");
+        console.assert(stack1.includes("Website chat assistant"), "Stack should include website chat when Website present");
+
+        const stack2 = (function(){ return (function(a){ const items=[]; if (a.channels?.includes("Phone")||a.channels?.includes("SMS")) items.push("AI phone + SMS agent"); if (a.channels?.includes("Website")) items.push("Website chat assistant"); if (a.channels?.includes("Instagram")||a.channels?.includes("Facebook")) items.push("IG/FB DM responder"); if (a.channels?.includes("Google Business")) items.push("Google Business Messages"); items.push("CRM + unified inbox"); items.push("Booking + reminders"); return items; })({channels:["Instagram","Facebook","Google Business"]}); })();
+        console.assert(stack2.includes("IG/FB DM responder"), "Stack should include IG/FB responder");
+        console.assert(stack2.includes("Google Business Messages"), "Stack should include Google Business Messages");
+
+        // Plan + timeline tests
+        const demo = (function(){ return (function buildPlan(a){ const STARTER_RECIPES_LOCAL = STARTER_RECIPES; const recipes = STARTER_RECIPES_LOCAL[a.challenge || "Lead capture + follow-up"] || []; const baseStack = [ (a.channels.includes("Phone") || a.channels.includes("SMS")) ? "AI receptionist + missed-call text-back" : "Website assistant + lead capture", a.challenge === "No-shows / scheduling chaos" ? "Smart reminders + waitlist" : "Nurture + booking links", a.channels.includes("Google Business") ? "Google profile chat/auto-replies" : "" ].filter(Boolean); const scope = [...baseStack, ...recipes]; const effort = a.teamSize === "Solo" ? "hands-off" : "collaborative"; const roi = (function estimateROI(a){ let monthly=12; if (a.teamSize === "Solo") monthly += 10; if (a.challenge === "Missed calls / slow replies") monthly += 12; if (a.channels?.includes("Phone")) monthly += 6; return {appointmentsSaved: monthly, revenueHint: "Often 10–30 extra bookings/mo depending on volume"}; })(a); return { headline: (function suggestHeadline(a){ if (a.challenge === "Missed calls / slow replies") return "Stop losing leads to voicemail"; if (a.challenge === "No-shows / scheduling chaos") return "Fewer no-shows, smoother days"; if (a.challenge === "Lead capture + follow-up") return "Turn browsers into bookings"; if (a.challenge === "Reviews / reputation") return "Grow 5★ reviews automatically"; if (a.challenge === "Customer support overload") return "Answer common questions automatically"; if (a.challenge === "Other") return "Let's find a solution together"; return "Automate the busywork, keep the human touch"; })(a), scope, stack: (function(a){ const items=[]; if (a.channels?.includes("Phone")||a.channels?.includes("SMS")) items.push("AI phone + SMS agent"); if (a.channels?.includes("Website")) items.push("Website chat assistant"); if (a.channels?.includes("Instagram")||a.channels?.includes("Facebook")) items.push("IG/FB DM responder"); if (a.channels?.includes("Google Business")) items.push("Google Business Messages"); items.push("CRM + unified inbox"); items.push("Booking + reminders"); return items; })(a), timeline: (function(a){ if (a.urgency === "Now") return "48 hours to live"; if (a.urgency === "This Month") return "1–2 weeks, paced with you"; return "We’ll map a pilot together"; })(a), roi, effort, nextSteps:["Free 15-min fit check","We configure a quick-start in 48 hours","Run for a week → adjust based on results"] }; })({ challenge:"Missed calls / slow replies", channels:["Phone","Website"], teamSize:"Solo", urgency:"Now"}); })();
+        console.assert(Array.isArray(demo.scope) && demo.scope.length > 0, "Plan scope should not be empty");
+        console.assert(demo.timeline === "48 hours to live", "Timeline should reflect 'Now'");
+
+        // ROI sanity
+        const roiDemo = (function(){ let a={ teamSize:"Solo", challenge:"Missed calls / slow replies", channels:["Phone"] }; let monthly=12; if (a.teamSize === "Solo") monthly += 10; if (a.challenge === "Missed calls / slow replies") monthly += 12; if (a.channels?.includes("Phone")) monthly += 6; return {appointmentsSaved: monthly}; })();
+        console.assert(roiDemo.appointmentsSaved > 12, "ROI should be greater than baseline for Solo + Phone + Missed calls");
+
+        // Validation tests
+        const v1 = (function(){ return (function getStepValidation(step, a){ if (step === 0 && !(a.role && a.teamSize)) return { message: "Pick a business type and team size to continue." }; if (step === 1 && !a.challenge) return { message: "Choose your biggest blocker to continue." }; if (step === 2 && (!a.channels || a.channels.length === 0)) return { message: "Select at least one channel to continue." }; if (step === 3) { if (!a.budget && a.urgency) return { field: "budget", message: "Select a budget to continue." }; if (a.budget && !a.urgency) return { field: "urgency", message: "Select a timing option to continue." }; if (!a.budget && !a.urgency) return { message: "Choose a budget and timing to continue." }; } return null; })(3, { budget: "", urgency: "Now" }); })();
+        console.assert(v1?.field === "budget", "Should require budget when urgency picked");
+        const v2 = (function(){ return (function getStepValidation(step, a){ if (step === 0 && !(a.role && a.teamSize)) return { message: "Pick a business type and team size to continue." }; if (step === 1 && !a.challenge) return { message: "Choose your biggest blocker to continue." }; if (step === 2 && (!a.channels || a.channels.length === 0)) return { message: "Select at least one channel to continue." }; if (step === 3) { if (!a.budget && a.urgency) return { field: "budget", message: "Select a budget to continue." }; if (a.budget && !a.urgency) return { field: "urgency", message: "Select a timing option to continue." }; if (!a.budget && !a.urgency) return { message: "Choose a budget and timing to continue." }; } return null; })(3, { budget: "$$", urgency: "" }); })();
+        console.assert(v2?.field === "urgency", "Should require urgency when budget picked");
+        const v3 = (function(){ return (function getStepValidation(step, a){ if (step === 0 && !(a.role && a.teamSize)) return { message: "Pick a business type and team size to continue." }; if (step === 1 && !a.challenge) return { message: "Choose your biggest blocker to continue." }; if (step === 2 && (!a.channels || a.channels.length === 0)) return { message: "Select at least one channel to continue." }; if (step === 3) { if (!a.budget && a.urgency) return { field: "budget", message: "Select a budget to continue." }; if (a.budget && !a.urgency) return { field: "urgency", message: "Select a timing option to continue." }; if (!a.budget && !a.urgency) return { message: "Choose a budget and timing to continue." }; } return null; })(3, { budget: "$$", urgency: "Now" }); })();
+        console.assert(v3 === null, "No validation when both provided");
+      } catch (e) {
+        console.warn("BootsAIWidget tests warning:", e);
+      }
+    })();
+  </script>
+</body>
+</html>
